@@ -1,0 +1,11 @@
+%dw 2.0
+
+type auto_936493a7_3081_49d9_9a13_0db990f9c531_Output_Variables_oldSensorData = Array<{ _?: java_lang_Object {"class": "java.lang.Object",
+  "typeAlias": "Object",
+  "typeId": "java.lang.Object"} }>
+type java_lang_Object = {|  |} {"class": "java.lang.Object",
+"typeAlias": "Object",
+"typeId": "java.lang.Object"}
+
+
+

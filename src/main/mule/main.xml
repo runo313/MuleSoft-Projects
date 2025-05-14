@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ftp="http://www.mulesoft.org/schema/mule/ftp" xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/ftp http://www.mulesoft.org/schema/mule/ftp/current/mule-ftp.xsd">
+	
+	<flow name="validateRequestFlow" doc:id="8fbb6aa8-f6ad-4eda-ad5e-76c467d9d5cc" >
+		<ee:transform doc:name="Transform Message" doc:id="2d99b93a-7885-4391-ad6e-7267364af453" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[var format = attributes.uriParams.format
+var minTemp = attributes.queryParams.minTemperature as Number default null
+var maxTemp = attributes.queryParams.maxTemperature as Number default null
+var date = attributes.queryParams.day default null
+var datePattern = /([0-9]{4})-([0-9]{2})-([0-9]{2})/ 
+
+var minTempError = if (minTemp != null and maxTemp != null and minTemp >= maxTemp) "minTemperature must be less than maxTemperature" else null
+var dateError = if (date != null and not ((date as String) matches datePattern)) "date must follow YYYY-MM-DD format" else null
+
+  
+
+---
+{
+    isValid: minTempError == null and dateError == null,  
+
+    errors: {
+        minTempError: minTempError,
+        dateError: dateError
+    }
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="format" ><![CDATA[#[attributes.uriParams.format]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Validate and route" doc:id="ec4f83b3-22f1-4f09-8564-a0e4b60e37ba" >
+			<when expression="#[payload.errors.minTempError != null]">
+				<ee:transform doc:name="Transform Message" doc:id="1acce8ae-007c-4538-9dcd-c40dd830970d" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+"Error": payload.errors.minTempError]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<when expression="#[payload.errors.dateError]">
+				<ee:transform doc:name="Transform Message1" doc:id="72beb4ab-23a1-4aa3-aa1a-a825a2e099a0" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+"error": payload.errors.dateError]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<when expression="#[payload.isValid]" >
+				<flow-ref doc:name="Flow Reference" doc:id="048dbe78-0e00-4750-a601-d7c2b4a38c21" name="databaseOperationFlow" targetValue="#[vars.format]"/>
+				<logger level="INFO" doc:name="Logger" doc:id="6840283e-30cf-4cb1-9f0d-ca7f37866f69" message="#[payload]"/>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Transform Message" doc:id="c86e1ccd-c2aa-48bc-a4c9-ca05f4c8d7ca" >
+					<ee:message >
+						<ee:set-payload ><![CDATA["Invalid Request parameters"]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[400]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</flow>
+	<flow name="databaseOperationFlow" doc:id="251a4738-b2f6-4216-9918-a2270de0fc14" >
+		<try doc:name="Try" doc:id="74e726f5-c98e-4964-bf2f-36021358d611" >
+			<logger level="INFO" doc:name="Logger" doc:id="61a07402-5a2e-4aec-8704-2337e0e14998" message="All validations passed " />
+			<db:select doc:name="Select" doc:id="b106b81b-cb62-426c-af8e-4ff260a820b4" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT *
+FROM sensor_data
+WHERE (:minTemperature::NUMERIC IS NULL OR temperature_F >= :minTemperature::NUMERIC)
+AND (:maxTemperature::NUMERIC IS NULL OR temperature_F <= :maxTemperature::NUMERIC) 
+AND(:date::DATE IS NULL OR CAST(time AS DATE) = :date::DATE)
+ORDER BY time DESC
+LIMIT 100;]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+	minTemperature: attributes.queryParams.minTemperature as Number default null,
+    maxTemperature: attributes.queryParams.maxTemperature as Number default null,
+	date: attributes.queryParams.day default null
+}]]]></db:input-parameters>
+		</db:select>
+			<set-variable value="#[payload]" doc:name="Set Variable" doc:id="2ad6cd7b-b04b-4160-bf84-b49344e38bb1" variableName="sensorData" />
+			<error-handler >
+				<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="bd72f6d7-e382-44a1-b3e2-e5e88b86d47f" type="DB:CONNECTIVITY" >
+					<ee:transform doc:name="Transform Message" doc:id="dd5a14c2-fc0e-40df-b828-1fbde325e83a" >
+						<ee:message >
+							<ee:set-payload ><![CDATA["Service is currently unavailable. Please try again later"]]></ee:set-payload>
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="httpStatus" ><![CDATA[500]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</on-error-propagate>
+			</error-handler>
+		</try>
+		<choice doc:name="Choice" doc:id="191e602e-cb6a-4703-bc0c-d6a25184aa1f" >
+			<when expression="#[vars.sensorData == []]">
+				<ee:transform doc:name="Transform Message" doc:id="0befa80e-8273-4ba5-b8fa-61350ff22781">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	Error: "No data found for the given filters"
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="Flow Reference" doc:id="737a5193-154f-4738-ab48-bceeb8f3f066" name="test123Sub_Flow" targetValue="#[{ sensorData: vars.sensorData, format: vars.format}]" />
+			</otherwise>
+		</choice>
+	</flow>
+	<sub-flow name="test123Sub_Flow" doc:id="d0f5b3da-4247-464d-949e-c0b9bf2f44a5" >
+		<logger level="INFO" doc:name="Logger" doc:id="4e8a5468-7718-4f1f-a5dc-d3efa5398229" message="Format value passed: #[vars.format]"/>
+		<choice doc:name="Choice" doc:id="24e5baad-23fb-4f4b-909c-0e7a75c033f4" >
+			<when expression="#[vars.format == 'json']" >
+				<ee:transform doc:name="Transform Message" doc:id="4ca57296-7245-45d9-955e-d6925f9d7a53" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+vars.sensorData map ((item) -> {
+    "TemperatureC": item.temperature_c,
+    "TemperatureF": item.temperature_f,
+    "Humidity": item.humidity,
+    "Timestamp": item.time
+})]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression="#[vars.format == 'csv']" >
+				<ee:transform doc:name="Transform Message" doc:id="98725f65-daf0-4103-ba7f-7c31a4777072" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/csv
+---
+
+vars.sensorData map ((item) -> {
+	    "Temperature(C)": item.temperature_c,
+	    "Temperature(F)": item.temperature_f,
+	    "Humidity": item.humidity,
+	    "Timestamp": item.time
+	})
+
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="b51f1089-59ff-4aaf-aa0a-9992958abcaa" message="Writing CSV to a csv file at #[p('file.temp.path') ++ p('file.csv.filename')]" />
+				<file:write doc:name="Write" doc:id="dd66f093-b1c8-4255-9fd5-c8246eacc828" config-ref="File_Config" path="#[p('file.temp.path') ++ p('file.csv.filename')]" />
+			</when>
+			<when expression="#[vars.format == 'xml']" >
+				<ee:transform doc:name="Transform Message" doc:id="93b46d80-1a1e-4821-88aa-30da3ab85498" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+---
+{
+    sensorData: {
+        "SensorReadings": vars.sensorData map ((item) -> {
+            "TemperatureC": item.temperature_c,
+            "TemperatureF": item.temperature_f,
+            "Humidity": item.humidity,
+            "Timestamp": item.time
+        })
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression="#[vars.format == 'xlsx']" >
+				<ee:transform doc:name="Transform Message1" doc:id="0b90ed1c-a66b-48fb-b839-9cfb44800ea4" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/xlsx
+---
+{
+    "Sensor Data": payload map (item) -> {
+        "Temperature(C)": item.temperature_c,
+        "Temperature(F)": item.temperature_f,
+        "Humidity": item.humidity,
+        "Timestamp": item.time
+    }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="7a322ca2-ac4f-49a5-97d5-0f0fc6eb4adc" message="Writing CSV to a csv file at #[p('file.temp.path') ++ p('file.xlsx.filename')]"/>
+				<file:write doc:name="Write" doc:id="9b834333-ad68-4f71-ac17-d17aaa86c435" config-ref="File_Config" path="#[p('file.temp.path') ++ p('file.xlsx.filename')]"/>
+				<set-payload value="file has been saved" doc:name="Set Payload" doc:id="f4170e8c-61bb-4b60-ba8a-4dccb44b83ef" />
+			</when>
+			<when expression="#[vars.format == 'yaml']" >
+				<ee:transform doc:name="Transform Message" doc:id="1c099269-4774-47ce-80d0-d369a473cc3d" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/yaml
+---
+{
+    "Temperature Readings": vars.sensorData map ((item) -> {
+        "Temperature(C)": item.temperature_c,
+         "Temperature(F)": item.temperature_f,
+        "Humidity": item.humidity,
+        Timestamp: item.time
+    })
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<set-payload value="Resource not found" doc:name="Set Payload" doc:id="273c3fe2-2eab-47db-ab3a-f27dcca45936" />
+				<set-variable value="404" doc:name="Set Variable" doc:id="7653d360-719e-4b97-a9c1-3ca619e3013d" variableName="httpStatus"/>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

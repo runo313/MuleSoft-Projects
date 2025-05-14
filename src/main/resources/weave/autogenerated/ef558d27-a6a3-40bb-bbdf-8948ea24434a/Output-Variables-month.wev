@@ -1,0 +1,4 @@
+%dw 2.0
+
+type auto_ef558d27_a6a3_40bb_bbdf_8948ea24434a_Output_Variables_month = Any
+

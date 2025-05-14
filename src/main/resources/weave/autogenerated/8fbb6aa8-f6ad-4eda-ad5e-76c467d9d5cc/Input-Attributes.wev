@@ -1,0 +1,27 @@
+%dw 2.0
+
+type auto_8fbb6aa8_f6ad_4eda_ad5e_76c467d9d5cc_Input_Attributes = {|
+  clientCertificate?: {|
+    publicKey?: {|  |}, 
+    "type"?: String, 
+    encoded?: Binary
+  |}, 
+  headers: {|  |}, 
+  listenerPath: String, 
+  method: String, 
+  queryParams: {|
+    minTemperature?: Number, 
+    maxTemperature?: Number, 
+    day?: String
+  |}, 
+  queryString: String, 
+  relativePath: String, 
+  remoteAddress: String, 
+  requestPath: String, 
+  requestUri: String, 
+  scheme: String, 
+  uriParams: {| format: "xlsx" | "xml" | "csv" | "json" | "yaml" |}, 
+  version: String, 
+  localAddress: String
+|}
+

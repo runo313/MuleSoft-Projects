@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties"
+	xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway"
+	xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+	xmlns:email="http://www.mulesoft.org/schema/mule/email"
+	xmlns:s3="http://www.mulesoft.org/schema/mule/s3" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd 
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd 
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/s3 http://www.mulesoft.org/schema/mule/s3/current/mule-s3.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd
+http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd">
+	<apikit:config name="temperature-api-configs" api="resource::32729b0b-faab-4dda-96a1-41081e1e7c92:temperature-api:1.0.0:raml:zip:temperature-api.raml" outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus" />
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="3a0f50c5-cc57-4e0c-ad70-12c325a15378" >
+		<http:listener-connection host="0.0.0.0" port="${http.port}" />
+	</http:listener-config>
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="b5076c96-fb07-4a51-aa48-60ce13121b5d" >
+		<db:generic-connection url="${db.url}" driverClassName="${db.driver}" user="${db.user}" password="${secure::db.password}" />
+	</db:config>
+	<file:config name="File_Config" doc:name="File Config" doc:id="38cbbdff-f77e-4c6b-acc6-ccdfd38da65e" >
+		<file:connection workingDir="${file.temp.path}" />
+	</file:config>
+	<configuration-properties doc:name="Configuration properties" doc:id="08af4087-2f3a-4899-85bd-31c3ab22ef3e" file="application-${env}.properties" />
+	<s3:config name="Amazon_S3_Configuration1" doc:name="Amazon S3 Configuration" doc:id="4f517ccc-6b34-483f-a03a-ca30d73f95c2" >
+		<s3:connection accessKey="${secure::s3.accessKey}" secretKey="${secure::s3.secretKey}" region="${s3.region}" />
+	</s3:config>
+	<global-property doc:name="Global Property" doc:id="7a74e143-1d65-4599-abd3-1a2dda616db1" name="env" value="local" />
+	<api-gateway:autodiscovery apiId="${api.id}" ignoreBasePath="true" doc:name="API Autodiscovery" doc:id="6aa192f4-9a39-4462-a7d2-ff52a03f74b3" flowRef="temperature-api-main" />
+	<secure-properties:config name="Secure_Properties_Config" doc:name="Secure Properties Config" doc:id="bf5b5a5f-08ab-4c77-b829-a31785d48669" file="secure-application-${env}.properties" key="${encryption.key}" >
+		<secure-properties:encrypt algorithm="Blowfish" />
+	</secure-properties:config>
+	<global-property doc:name="Global Property" doc:id="acbfcef4-0c7d-44ca-861a-da7ccee17cee" name="encryption.key" value="folkloreevermore" />
+	</mule>

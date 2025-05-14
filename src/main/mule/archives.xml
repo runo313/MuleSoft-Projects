@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:batch="http://www.mulesoft.org/schema/mule/batch"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:s3="http://www.mulesoft.org/schema/mule/s3" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/s3 http://www.mulesoft.org/schema/mule/s3/current/mule-s3.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	
+	<os:object-store name="maxTimeObjectStore" doc:name="Object store" doc:id="fc188bfc-b5c8-4861-a5a3-184456e8628c" maxEntries="50" expirationInterval="100" expirationIntervalUnit="DAYS" />
+	<flow name="getArchivedReportsFlow" doc:id="ef558d27-a6a3-40bb-bbdf-8948ea24434a" >
+		<ee:transform doc:name="Transform Message" doc:id="9d0c1535-02fe-4d1e-bc42-acef77055ce8">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="year"><![CDATA[attributes.uriParams.year]]></ee:set-variable>
+				<ee:set-variable variableName="month"><![CDATA[attributes.uriParams.month default null]]></ee:set-variable>
+				<ee:set-variable variableName="fileName"><![CDATA[attributes.uriParams.filenname default null]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="d9775684-9940-4957-a699-7c07abcf9014" >
+			<when expression="#[vars.fileName != null]">
+				<s3:get-object doc:name="Get Object" doc:id="58c0ce2c-9c80-44ca-bcc7-b60411835bcf" config-ref="Amazon_S3_Configuration1" bucketName="${s3.bucketName}" key="#['archives/' ++ vars.year ++ '/' ++ vars.month ++ '/' ++ vars.fileName]"/>
+				<set-variable value="#[%dw 2.0&#10;output application/java&#10;---&#10;{&#10;    'Content-Disposition': &quot;attachment; filename=\&quot;&quot; ++ (vars.fileName default &quot;unknown-file&quot;) ++ &quot;\&quot;&quot;,&#10;    'Content-Type': attributes.contentType default 'application/octet-stream',&#10;    'Content-Length': attributes.contentLength default '0'&#10;}]" doc:name="Set Variable" doc:id="7f6be212-98a7-498e-875b-4cff13801e0d" variableName="headers"/>
+				<ee:transform doc:name="Transform Message" doc:id="bbf53990-66d5-4b4e-b55a-4a2bbf981e1c">
+					<ee:message>
+						<ee:set-attributes ><![CDATA[%dw 2.0
+output application/java
+---
+vars.headers]]></ee:set-attributes>
+					</ee:message>
+				</ee:transform>
+				<set-payload value="#[payload]" doc:name="Set Payload" doc:id="4f30d5e3-1dd3-4667-b887-fd95f96e93dc" />
+				
+			</when>
+			<when expression="#[vars.year != null  and vars.month != null and vars.fileName == null]">
+				<s3:list-objects doc:name="List Objects" doc:id="b9ba64bb-d15b-471b-a66a-abe3c8e4960d" config-ref="Amazon_S3_Configuration1" bucketName="${s3.bucketName}" prefix="#['archives/' ++ vars.year ++ '/' ++ vars.month ++ '/']" />
+				<ee:transform doc:name="Transform Message" doc:id="978a3ab6-cd87-4a7f-920a-930e9c1c12d7" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/csv separator="|"
+var fileList = payload map ((item) -> item.key[17 to -1]) distinctBy $
+var isEmptyList = isEmpty(fileList)
+var safeMonth = vars.month default "Unknown"
+---
+if (isEmptyList) 
+    [{ Error: "No files found for " ++ vars.year ++ "/" ++ safeMonth }]
+else
+    fileList map ((file) -> {
+        Year: vars.year,
+        Month: (safeMonth) match {
+            case "01" -> "January"
+            case "02" -> "February"
+            case "03" -> "March"
+            case "04" -> "April"
+            case "05" -> "May"
+            case "06" -> "June"
+            case "07" -> "July"
+            case "08" -> "August"
+            case "09" -> "September"
+            case "10" -> "October"
+            case "11" -> "November"
+            case "12" -> "December"
+            else -> "Unknown"
+        },
+        FileName: file
+    })]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression="#[vars.year != null and vars.month == null and vars.fileName == null]">
+				<s3:list-objects doc:name="List Objects" doc:id="b8d89855-74d7-45b5-9a74-80971f828482" config-ref="Amazon_S3_Configuration1" bucketName="${s3.bucketName}" prefix="#['archives/' ++ vars.year ++ '/']"/>
+				<ee:transform doc:name="Transform Message" doc:id="ddf4f8f4-d421-44e4-8995-ec583f7610d0" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/yaml
+
+var fileList = payload map ((item) -> item.key[17 to -1]) distinctBy $
+var isEmptyList = isEmpty(fileList)
+---
+
+     if (isEmptyList) 
+            { "Error": "No files found for year " ++ vars.year }
+        else 
+            { ("Files Available in " ++ vars.year): fileList 
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<s3:list-objects doc:name="List Objects" doc:id="503a38f1-4110-46c6-8080-92190d80319b" config-ref="Amazon_S3_Configuration1" bucketName="${s3.bucketName}" prefix="archives/"/>
+				<ee:transform doc:name="Transform Message" doc:id="22937845-3ab4-4b3f-9185-20f4bb0812f0">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/yaml
+---
+{
+	"Years of files Available": (payload map ((item) -> item.key[9 to 12])) distinctBy $ 
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</otherwise>
+		</choice>
+	</flow>
+	<flow name="archive-flow" doc:id="936493a7-3081-49d9-9a13-0db990f9c531" >
+		<scheduler doc:name="Scheduler" doc:id="4c6d2af7-4913-430a-8b62-2cc1ec589e93" >
+			<scheduling-strategy >
+				<cron expression="0 0 0 1 1,4,7,10 ?" />
+			</scheduling-strategy>
+		</scheduler>
+		<os:retrieve doc:name="Retrieve" doc:id="1d76eab1-48a1-4b4f-9203-e9461b06350e" key="time" target="maxTime" objectStore="maxTimeObjectStore">
+			<os:default-value ><![CDATA[2025-01-01 ]]></os:default-value>
+		</os:retrieve>
+		<logger level="INFO" doc:name="Logger" doc:id="f6e58ac3-19be-4278-98a5-96a10b357c76" message="retrieved time for os #[vars.maxTime]"/>
+		<db:select doc:name="Select" doc:id="19b30417-6bba-40e1-b391-3b5aeafa2004" config-ref="Database_Config" target="oldSensorData">
+			<db:sql ><![CDATA[SELECT * FROM sensor_data WHERE time > :time;]]></db:sql>
+			<db:input-parameters ><![CDATA[#[time: vars.maxTime]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="Choice" doc:id="022de08b-43bc-4705-a328-88f9e547329f" >
+			<when expression="#[sizeOf(vars.oldSensorData) &gt; 0]">
+				<os:store doc:name="Store Max Time" doc:id="99a241b4-c28c-4607-b38e-ef770e4dc291" key="time" objectStore="maxTimeObjectStore">
+					<os:value ><![CDATA[#[max(vars.oldSensorData map (item) -> item.time)]]]></os:value>
+				</os:store>
+				<ee:transform doc:name="Transform to CSV" doc:id="6e119acd-e305-4fce-9a68-6003d60fa3b8">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/csv
+---
+
+vars.oldSensorData map ((item) -> {
+	    "Temperature(C)": item.temperature_c,
+	    "Temperature(F)": item.temperature_f,
+	    "Humidity": item.humidity,
+	    "Timestamp": item.time
+	})
+
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<s3:put-object doc:name="Put Object" doc:id="e966cd94-fd98-498f-8d40-19f694ed487c" config-ref="Amazon_S3_Configuration1" bucketName="${s3.bucketName}" key="#['archives/' ++ now() as String {format: 'yyyy'} ++ '/' ++ now() as String {format: 'MM'} ++ '/Room-temperature-System-' ++ now() as String {format: 'yyyy-MM-dd-HH-mm-ss'} ++ '.csv']" contentType="application/csv">
+				</s3:put-object>
+				<logger level="INFO" doc:name="Logger" doc:id="b2aba245-c544-4361-af64-a79131469efc" message='#[if (payload.eTag != []) "Archived successfully" else "Error with archives"]' />
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Logger" doc:id="aebcae80-85b0-49bb-a1ab-17a183c72027" message="No data available to  archive"/>
+			</otherwise>
+		</choice>
+	</flow>
+</mule>

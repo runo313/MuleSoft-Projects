@@ -1,0 +1,11 @@
+%dw 2.0
+
+type auto_8fbb6aa8_f6ad_4eda_ad5e_76c467d9d5cc_Output_Variables_sensorData = Array<{ _?: java_lang_Object {"class": "java.lang.Object",
+  "typeAlias": "Object",
+  "typeId": "java.lang.Object"} }>
+type java_lang_Object = {|  |} {"class": "java.lang.Object",
+"typeAlias": "Object",
+"typeId": "java.lang.Object"}
+
+
+
